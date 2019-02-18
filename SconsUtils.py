@@ -396,7 +396,7 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
         time.time()).strftime('%Y_%m_%d__%H_%M_%S')
 
     try:
-        print_cmd = GetOption('print_cmd')
+        print_cmd = GetOption('option_verbose')
     except AttributeError:
         print_cmd = False
 
