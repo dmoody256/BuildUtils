@@ -356,21 +356,23 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
                 " > " + build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs/" + prog_name + "_link.txt 2>&1")
 
     if(prog_type == "shared"):
-
         prog = build_env.SharedLibrary(
-            install_dir + "/" + prog_name, source_objs)
+            build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
+        build_env.Install(install_dir, prog)
 
     elif(prog_type == "static"):
         prog = build_env.StaticLibrary(
-            install_dir + "/" + prog_name, source_objs)
+            build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
+        build_env.Install(install_dir, prog)
 
     elif(prog_type == 'exec'):
         prog = build_env.Program(
-            install_dir + "/" + prog_name, source_objs)
+            build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
+        build_env.Install(install_dir, prog)
 
     elif(prog_type == 'unit'):
         prog = build_env.CxxTest(
-            install_dir + "/" + prog_name, header_files, CXXTEST_RUNNER="ErrorPrinter", CXXTEST_OPTS="--world="+prog_name)
+            build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, header_files, CXXTEST_RUNNER="ErrorPrinter", CXXTEST_OPTS="--world="+prog_name)
         for exe in prog:
             if os.path.basename(os.path.splitext(str(exe))[0]) == prog_name:
                 for node in exe.children():
