@@ -266,7 +266,7 @@ def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=Non
             conf = Configure(
                 env,
                 conf_dir=self.conf_dir + "/findgraphite2",
-                log_file="conf.log")
+                log_file=self.conf_dir + "/findgraphite2/conf.log")
 
             result = conf.TryLink("""
             #include <graphite2/Fonts.h>
@@ -408,7 +408,7 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
             conf = Configure(
                 env,
                 conf_dir=self.conf_dir + "/findfreetype",
-                log_file="conf.log")
+                log_file=self.conf_dir + "/findfreetype/conf.log")
 
             result = conf.TryLink("""
             #include <ft2build.h>
