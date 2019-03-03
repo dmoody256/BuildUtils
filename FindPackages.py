@@ -187,9 +187,31 @@ class PackageFinder(object):
             
             test_env.ParseConfig(pkgconfig_str)
             if self.compileTest(test_env):
-                self.version = subprocess.check_output(
-                    ['pkg-config', '--modversion', self.packagename]).decode('utf8').strip()
-                self.p.InfoPrint(" Found " + self.packagename + " version " + self.version)
+                
+                header_dirs = subprocess.check_output(
+                    ['pkg-config', self.packagename, "--cflags"]).decode('utf8').strip().split(' ')
+                header_dirs += ['-I/usr/include']
+                found_version = False
+                for path in header_dirs:
+                    if path.startswith('-I'):
+                        path = path[2:]
+                        for root, dirs, files in os.walk(path, topdown=False):
+                            for name in files:
+                                if self.timedout['timedout']:
+                                    return
+                                version_file = self.checkVersion(test_env, name, root)
+                                if version_file:
+                                    found_version = version_file
+                                    break
+                            if found_version:
+                                break
+                    
+                    if found_version:
+                        break
+                if found_version:
+                    self.p.InfoPrint(" Found " + self.packagename + " version " + self.version)
+                else:
+                    self.p.InfoPrint(" Found " + self.packagename + " with unknown version.")
                 self.env.ParseConfig(pkgconfig_str)
                 return test_env
 
@@ -204,11 +226,15 @@ class PackageFinder(object):
             if not IsCrossCompile(test_env):
                 if GetTargetArch(test_env) == 'amd64':
                     self.sys_paths.append("C:/Program Files")
+                    self.sys_paths.append("C:/cygwin64")
+                    self.sys_paths.append("C:/msys64")
                 else:
                     self.sys_paths.append("C:/Program Files (x86)")
-                if self.required:
-                    # check user directory, and program files
-                    self.sys_paths.append(os.environ.get('USERPROFILE'))
+                    self.sys_paths.append("C:/cygwin")
+                    self.sys_paths.append("C:/msys")
+                self.sys_paths.append("C:/MinGW")
+                # check user directory, and program files
+                self.sys_paths.append(os.environ.get('USERPROFILE'))
                     
         elif 'linux' in sys.platform:
             if not IsCrossCompile(test_env):
@@ -220,7 +246,84 @@ class PackageFinder(object):
                 self.sys_paths.append(["/usr/local/include", "/usr/local/lib"])
                 self.sys_paths.append(["/usr/include", "/usr/lib"])
                 
-                
+    def search(self, paths, required=False):
+
+        found_headers = None
+        found_libs = None
+        found_version = None
+        test_env = self.getTestEnv()
+
+        for test_path in paths:
+            self.p.InfoPrint(" Looking in " + str(test_path))
+
+            # include and lib paths passed seperatly
+            if type(test_path) is list:
+                for root, dirs, files in os.walk(test_path[0], topdown=False):
+                    for name in files:
+                        if self.timedout['timedout']:
+                            return
+                        header_dir = self.checkHeader(test_env, name, root)
+                        if header_dir:
+                            found_headers = header_dir
+                            break
+                    if found_headers:
+                        break
+
+                for root, dirs, files in os.walk(test_path[1], topdown=False):
+                    for name in files:
+                        if self.timedout['timedout']:
+                            return
+                        lib_dir = self.checkLib(test_env, name, root)
+                        if lib_dir:
+                            found_libs = lib_dir
+                            break
+                    if found_libs:
+                        break
+            # look in same dir for lib and include
+            else:
+                for root, dirs, files in os.walk(test_path, topdown=False):
+                    for name in files:
+                        if self.timedout['timedout']:
+                            return
+                        header_dir = self.checkHeader(test_env, name, root)
+                        if header_dir:
+                            found_headers = header_dir
+                            break
+                        lib_dir = self.checkLib(test_env, name, root)
+                        if lib_dir:
+                            found_libs = lib_dir
+                            break
+                    if found_headers and found_libs:
+                        break
+                    
+            if found_headers and found_libs:
+                for root, dirs, files in os.walk(found_headers, topdown=False):
+                    for name in files:
+                        if self.timedout['timedout']:
+                            return
+                        version_file = self.checkVersion(test_env, name, root)
+                        if version_file:
+                            found_version = version_file
+                            break
+                    if found_version:
+                        break
+
+                if self.compileTest(test_env):
+                    self.p.InfoPrint(" Found " + self.packagename + " version " + self.version +
+                                        " in " + str(found_headers))
+                    return self.foundPackage(test_env, found_libs, found_headers, found_version)
+                else:
+                    self.p.InfoPrint(" Candidate failed in " + found_headers + " and " + found_libs)
+                    test_env = self.getTestEnv()
+                    found_libs = None
+                    found_headers = None
+                    found_version = None
+            else:
+                test_env = self.getTestEnv()
+                found_libs = None
+                found_headers = None
+                found_freetype_version = None
+
     def searchThread(self):
 
         self.p.InfoPrint(" Searching for " + self.packagename + "...")
@@ -269,10 +372,10 @@ def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=Non
                 log_file=self.conf_dir + "/findgraphite2/conf.log")
 
             result = conf.TryLink("""
-            #include <graphite2/Fonts.h>
+            #include <graphite2/Font.h>
             int main()
             {
-                int nMajor, int nMinor, int nBugFix;
+                int nMajor, nMinor, nBugFix;
                 gr_engine_version(&nMajor, &nMinor, &nBugFix);
                 return 0;
             }
@@ -280,108 +383,145 @@ def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=Non
 
             conf.Finish()
             return result
+
+        def checkHeader(self, env, file, root):
+            if file == 'Font.h' and os.path.basename(root) == 'graphite2':
+                env.Append(CPPPATH=[os.path.dirname(root)])
+                return os.path.dirname(root)
+
+        def checkLib(self, env, file, root):
+            if ('graphite2' in file
+                and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
+                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                env.Append(LIBPATH=[root])
+                return root
+        
+        def checkVersion(self, env, file, root):
+            if file == 'Font.h' and os.path.basename(root) == 'graphite2':
+                version_file = os.path.join(root, file)
+                with open(version_file) as f:
+                    contents = f.read()
+                    major = re.search(
+                        r'^#define\s+GR2_VERSION_MAJOR\s+(\d+)', contents, re.MULTILINE)
+                    if major:
+                        self.version += str(major.group(1))
+                    minor = re.search(
+                        r'^#define\s+GR2_VERSION_MINOR\s+(\d+)', contents, re.MULTILINE)
+                    if minor:
+                        self.version += "." + str(minor.group(1))
+                    patch = re.search(
+                        r'^#define\s+GR2_VERSION_BUGFIX\s+(\d+)', contents, re.MULTILINE)
+                    if patch:
+                        self.version += "." + str(patch.group(1))
+                return version_file
+
+        def foundPackage(self, env, found_libs, found_headers, found_version):
+            if self.env:
+                self.env.Append(
+                    LIBPATH=[found_libs],
+                    CPPPATH=[found_headers],
+                    LIB=['graphite2'])
+                return self.env
+            else:
+                return env
                 
-
-        def search(self, paths, required=False):
-
-            found_headers = None
-            found_libs = None
-            found_graphite_version = None
-            test_env = self.getTestEnv()
-
-            for test_path in paths:
-                self.p.InfoPrint(" Looking in " + str(test_path))
-
-                # include and lib paths passed seperatly
-                if type(test_path) is list:
-                    for root, dirs, files in os.walk(test_path[0], topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if name == 'Fonts.h' and os.path.basename(root) == 'graphite2':
-                                found_headers = os.path.dirname(root)
-                                test_env.Append(CPPPATH=[found_headers])
-                                break
-                        if found_headers:
-                            break
-
-                    for root, dirs, files in os.walk(test_path[1], topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if ('graphite2' in name
-                                and (env["SHLIBSUFFIX"] in name or env["LIBSUFFIX"] in name)):
-                                found_libs = root
-                                test_env.Append(LIBPATH=[root])
-                                break
-                        if found_libs:
-                            break
-                # look in same dir for lib and include
-                else:
-                    for root, dirs, files in os.walk(test_path, topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if name == 'Fonts.h' and os.path.basename(root) == 'graphite2':
-                                found_freetype_version = os.path.join(
-                                    root, name)
-                                found_headers = os.path.dirname(root)
-                                test_env.Append(CPPPATH=[found_headers])
-                            if ('graphite2' in name
-                                and (env["SHLIBSUFFIX"] in name or env["LIBSUFFIX"] in name)):
-                                found_libs = root
-                                test_env.Append(LIBPATH=[root])
-
-                            if found_headers and found_libs:
-                                break
-                        if found_headers and found_libs:
-                            break
-                        
-                if found_headers and found_libs and found_freetype_version:
-                   
-                    if self.compileTest(test_env):
-                        with open(found_freetype_version) as f:
-                            contents = f.read()
-                            major = re.search(
-                                r'^#define\s+GR2_VERSION_MAJOR\s+(\d+)', contents, re.MULTILINE)
-                            if major:
-                                self.version += str(major.group(1))
-                            minor = re.search(
-                                r'^#define\s+GR2_VERSION_MINOR\s+(\d+)', contents, re.MULTILINE)
-                            if minor:
-                                self.version += "." + str(minor.group(1))
-                            patch = re.search(
-                                r'^#define\s+GR2_VERSION_BUGFIX\s+(\d+)', contents, re.MULTILINE)
-                            if patch:
-                                self.version += "." + str(patch.group(1))
-
-                        self.p.InfoPrint(" Found " + self.packagename + " version " + self.version +
-                                         " in " + str(found_headers))
-                        if self.env:
-                            self.env.Append(
-                                LIBPATH=[found_libs],
-                                CPPPATH=[found_headers],
-                                LIB=['graphite2'])
-                            return self.env
-                        else:
-                            return test_env
-                    else:
-                        self.p.InfoPrint(" Candidate failed in " + test_path)
-                        test_env = self.getTestEnv()
-                        found_libs = None
-                        found_headers = None
-                        found_freetype_version = None
-                else:
-                    test_env = self.getTestEnv()
-
     finder = Graphite2Finder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()
 
 
-def FindGlib(env=None, paths=[], required=False, timeout=None):
-    p = ColorPrinter()
-    p.InfoPrint(" FindGlib not implemented, skipping.")
-    return None
+def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
+    class GlibFinder(PackageFinder):
+        def __init__(self, env, paths, required, timeout, conf_dir):
+            super(GlibFinder, self).__init__(env, paths, required, timeout, conf_dir)
+
+            self.packagename = 'glib-2.0'
+
+            if os.environ.get('GLIB_DIR'):
+                self.user_paths.append(os.environ.get('GLIB_DIR'))
+
+            if env and env.get('GLIB_DIR'):
+                self.user_paths.append(env.get('GLIB_DIR'))
+
+        def compileTest(self, env):
+            env.Append(LIBS=['glib-2.0'])
+            conf = Configure(
+                env,
+                conf_dir=self.conf_dir + "/findglib2",
+                log_file=self.conf_dir + "/findglib2/conf.log")
+
+            result = conf.TryLink("""
+            #include <glib.h>
+            int main()
+            {
+                const gchar* check = glib_check_version (
+                    GLIB_MAJOR_VERSION,
+                    GLIB_MINOR_VERSION,
+                    GLIB_MICRO_VERSION);
+             
+                return (int)check;
+            }
+            """, '.c')
+            conf.Finish()
+            return result
+
+        def checkHeader(self, env, file, root):
+            if file == 'glib.h':
+                env.Append(CPPPATH=[root])
+                return root
+            if file == 'glibconfig.h':
+                env.Append(CPPPATH=[root])
+                return root
+
+        def checkLib(self, env, file, root):
+            if ('glib-2.0' in file
+                and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
+                and (nafileme.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                env.Append(LIBPATH=[root])
+                found_headers = False
+                for configroot, dirs, files in os.walk(root, topdown=False):
+                    for name in files:
+                        if self.timedout['timedout']:
+                            return
+                        header_dir = self.checkHeader(env, name, configroot)
+                        if header_dir:
+                            found_headers = header_dir
+                            break
+                    if found_headers:
+                        break
+                return root
+
+        def checkVersion(self, env, file, root):
+            if file == 'glibconfig.h':
+                version_file = os.path.join(root, file)
+                with open(version_file) as f:
+                    contents = f.read()
+                    major = re.search(
+                        r'^#define\s+GLIB_MAJOR_VERSION\s+(\d+)', contents, re.MULTILINE)
+                    if major:
+                        self.version += str(major.group(1))
+                    minor = re.search(
+                        r'^#define\s+GLIB_MINOR_VERSION\s+(\d+)', contents, re.MULTILINE)
+                    if minor:
+                        self.version += "." + str(minor.group(1))
+                    patch = re.search(
+                        r'^#define\s+GLIB_MICRO_VERSION\s+(\d+)', contents, re.MULTILINE)
+                    if patch:
+                        self.version += "." + str(patch.group(1))
+                return version_file
+
+        def foundPackage(self, env, found_libs, found_headers, found_version):
+            if self.env:
+                self.env.AppendUnique(
+                    LIBPATH=found_libs,
+                    CPPPATH=env['CPPPATH'],
+                    LIB=['glib-2.0'])
+                return self.env
+            else:
+                return env
+    
+    finder = GlibFinder(env, paths, required, timeout, conf_dir)
+    return finder.startSearch()
+
 
 
 def FindIcu(env=None, paths=[], required=False, timeout=None):
@@ -441,109 +581,46 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
 
             super(FreetypeFinder, self).addPlatformPaths()
 
-        def search(self, paths, required=False):
+        def checkHeader(self, env, file, root):
+            if file == 'ft2build.h':
+                env.Append(CPPPATH=[root])
+                return root
 
-            found_headers = None
-            found_libs = None
-            found_freetype_version = None
-            test_env = self.getTestEnv()
+        def checkLib(self, env, file, root):
+            if ('freetype' in file
+                and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
+                and (nafileme.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                env.Append(LIBPATH=[root])
+                return root
+        
+        def checkVersion(self, env, file, root):
+            if file == 'freetype.h':
+                version_file = os.path.join(root, file)
+                with open(version_file) as f:
+                    contents = f.read()
+                    major = re.search(
+                        r'^#define\s+FREETYPE_MAJOR\s+(\d+)', contents, re.MULTILINE)
+                    if major:
+                        self.version += str(major.group(1))
+                    minor = re.search(
+                        r'^#define\s+FREETYPE_MINOR\s+(\d+)', contents, re.MULTILINE)
+                    if minor:
+                        self.version += "." + str(minor.group(1))
+                    patch = re.search(
+                        r'^#define\s+FREETYPE_PATCH\s+(\d+)', contents, re.MULTILINE)
+                    if patch:
+                        self.version += "." + str(patch.group(1))
+                return version_file
 
-            for test_path in paths:
-                self.p.InfoPrint(" Looking in " + str(test_path))
-
-                # include and lib paths passed seperatly
-                if type(test_path) is list:
-                    for root, dirs, files in os.walk(test_path[0], topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if name == 'ft2build.h':
-                                found_headers = root
-                                test_env.Append(CPPPATH=[root])
-                                break
-                        
-                        if found_headers:
-                            break
-
-                    for root, dirs, files in os.walk(test_path[1], topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if ('freetype' in name
-                                and (env["SHLIBSUFFIX"] in name or env["LIBSUFFIX"] in name)):
-                                found_libs = root
-                                test_env.Append(LIBPATH=[root])
-                                break
-                        if found_libs:
-                            break
-                # look in same dir for lib and include
-                else:
-                    for root, dirs, files in os.walk(test_path, topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if name == 'ft2build.h':
-                                found_headers = root
-                                test_env.Append(CPPPATH=[root])
-                            if ('freetype' in name
-                                    and (env["SHLIBSUFFIX"] in name or env["LIBSUFFIX"] in name)):
-                                test_env.Append(LIBPATH=[root])
-                                found_libs = root
-
-                            if found_headers and found_libs:
-                                break
-                        if found_headers and found_libs:
-                            break
-                        
-                if found_headers and found_libs:
-                    for root, dirs, files in os.walk(found_headers, topdown=False):
-                        for name in files:
-                            if self.timedout['timedout']:
-                                return
-                            if name == 'freetype.h':
-                                found_freetype_version = os.path.join(
-                                    root, name)
-                                break
-                        if found_freetype_version:
-                            break
-
-                    if self.compileTest(test_env):
-                        with open(found_freetype_version) as f:
-                            contents = f.read()
-                            major = re.search(
-                                r'^#define\s+FREETYPE_MAJOR\s+(\d+)', contents, re.MULTILINE)
-                            if major:
-                                self.version += str(major.group(1))
-                            minor = re.search(
-                                r'^#define\s+FREETYPE_MINOR\s+(\d+)', contents, re.MULTILINE)
-                            if minor:
-                                self.version += "." + str(minor.group(1))
-                            patch = re.search(
-                                r'^#define\s+FREETYPE_PATCH\s+(\d+)', contents, re.MULTILINE)
-                            if patch:
-                                self.version += "." + str(patch.group(1))
-
-                        self.p.InfoPrint(" Found " + self.packagename + " version " + self.version +
-                                         " in " + str(found_headers))
-                        if self.env:
-                            self.env.Append(
-                                LIBPATH=[found_libs],
-                                CPPPATH=[found_headers],
-                                LIB=['freetype'])
-                            return self.env
-                        else:
-                            return test_env
-                    else:
-                        self.p.InfoPrint(" Candidate failed in " + found_headers + " and " + found_libs)
-                        test_env = self.getTestEnv()
-                        found_libs = None
-                        found_headers = None
-                        found_freetype_version = None
-                else:
-                    test_env = self.getTestEnv()
-                    found_libs = None
-                    found_headers = None
-                    found_freetype_version = None
+        def foundPackage(self, env, found_libs, found_headers, found_version):
+            if self.env:
+                self.env.Append(
+                    LIBPATH=[found_libs],
+                    CPPPATH=[found_headers],
+                    LIB=['freetype'])
+                return self.env
+            else:
+                return env
 
     finder = FreetypeFinder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()

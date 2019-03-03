@@ -222,6 +222,7 @@ class ProgressCounter(object):
 
         slashed_node = str(node).replace("\\", "/")
         for build in self.progress_builders:
+           
             #print(build.target + ": "+str(node.get_state())+" - " + slashed_node)
             if(slashed_node.endswith(build.target)):
 
@@ -312,8 +313,15 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
                                          CXXCOM=build_env['CXXCOM'] + " " + win_redirect + " > \"" + build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs/" + filename + "_compile.txt\" " + linux_redirect)
             source_objs.append(build_obj)
 
-    progress.AddBuild(env, source_build_files, env.subst(
-        '$LIBPREFIX') + prog_name + env.subst('$LIBSUFFIX'))
+    if prog_type == 'shared':
+        progress.AddBuild(env, source_build_files, env.subst(
+            '$SHLIBPREFIX') + prog_name + env.subst('$SHLIBSUFFIX'))
+    elif prog_type == 'static':
+        progress.AddBuild(env, source_build_files, env.subst(
+            '$LIBPREFIX') + prog_name + env.subst('$LIBSUFFIX'))
+    elif prog_type == 'exec' or prog_type == 'unit':
+        progress.AddBuild(env, source_build_files, env.subst(
+            '$PROGPREFIX') + prog_name + env.subst('$PROGSUFFIX'))
 
     if(prog_type == 'shared'):
         if("Windows" in platform.system()):
@@ -390,19 +398,19 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
     # if ARGUMENTS.get('fail', 0):
     #    Command('target', 'source', ['/bin/false'])
 
+    build_env['BUILD_LOG_TIME'] = datetime.datetime.fromtimestamp(
+        time.time()).strftime('%Y_%m_%d__%H_%M_%S')
+
     def print_cmd_line(s, targets, sources, env):
         with open(env['PROJECT_DIR'] + "/" + build_dir + "/build_logs/build_" + env['BUILD_LOG_TIME'] + ".log", "a") as f:
             f.write(s + "\n")
-
-    build_env['BUILD_LOG_TIME'] = datetime.datetime.fromtimestamp(
-        time.time()).strftime('%Y_%m_%d__%H_%M_%S')
 
     try:
         print_cmd = GetOption('option_verbose')
     except AttributeError:
         print_cmd = False
 
-    if(not print_cmd):
+    if not print_cmd:
         build_env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 
     built_bins = []
