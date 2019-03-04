@@ -475,7 +475,7 @@ def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
         def checkLib(self, env, file, root):
             if ('glib-2.0' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (nafileme.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 found_headers = False
                 for configroot, dirs, files in os.walk(root, topdown=False):
@@ -523,11 +523,90 @@ def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
     return finder.startSearch()
 
 
+def FindIcu(env=None, paths=[], required=False, timeout=None, conf_dir=None):
+    class IcuFinder(PackageFinder):
+        def __init__(self, env, paths, required, timeout, conf_dir):
+            super(IcuFinder, self).__init__(env, paths, required, timeout, conf_dir)
+            self.packagename = 'icu-uc'
 
-def FindIcu(env=None, paths=[], required=False, timeout=None):
-    p = ColorPrinter()
-    p.InfoPrint(" FindIcu not implemented, skipping.")
-    return None
+            if os.environ.get('ICU_DIR'):
+                self.user_paths.append(os.environ.get('ICU_DIR'))
+
+            if env and env.get('ICU_DIR'):
+                self.user_paths.append(env.get('ICU_DIR'))
+
+        def compileTest(self, env):
+            env.Append(LIB=['icuuc', 'icudata'])
+            conf = Configure(
+                env,
+                conf_dir=self.conf_dir + "/findicu",
+                log_file=self.conf_dir + "/findicu/conf.log")
+
+            result = conf.TryLink("""
+            #include <unicode/ucnv.h>
+            int main()
+            {
+                UErrorCode status = U_ZERO_ERROR;
+                UConverter *defConv;
+                defConv = u_getDefaultConverter(&status);
+                if (U_FAILURE(status)) {
+                    return 1;
+                }
+                return 0;
+            }
+            """, '.c')
+
+            conf.Finish()
+            return result
+
+        def checkHeader(self, env, file, root):
+            if file == 'ucnv.h' and os.path.basename(root) == 'unicode':
+                env.Append(CPPPATH=[os.path.dirname(root)])
+                return os.path.dirname(root)
+
+        def checkLib(self, env, file, root):
+            if ('icuuc' in file
+                and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
+                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                env.Append(LIBPATH=[root])
+                return root
+            if ('icudata' in file
+                and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
+                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                env.Append(LIBPATH=[root])
+                return root
+        
+        def checkVersion(self, env, file, root):
+            if file == 'uvernum.h' and os.path.basename(root) == 'unicode':
+                version_file = os.path.join(root, file)
+                with open(version_file) as f:
+                    contents = f.read()
+                    major = re.search(
+                        r'^#define\s+U_ICU_VERSION_MAJOR_NUM\s+(\d+)', contents, re.MULTILINE)
+                    if major:
+                        self.version += str(major.group(1))
+                    minor = re.search(
+                        r'^#define\s+U_ICU_VERSION_MINOR_NUM\s+(\d+)', contents, re.MULTILINE)
+                    if minor:
+                        self.version += "." + str(minor.group(1))
+                    patch = re.search(
+                        r'^#define\s+U_ICU_VERSION_PATCHLEVEL_NUM\s+(\d+)', contents, re.MULTILINE)
+                    if patch:
+                        self.version += "." + str(patch.group(1))
+                return version_file
+
+        def foundPackage(self, env, found_libs, found_headers, found_version):
+            if self.env:
+                self.env.Append(
+                    LIBPATH=[found_libs],
+                    CPPPATH=[found_headers],
+                    LIB=['icuuc', 'icudata'])
+                return self.env
+            else:
+                return env
+    
+    finder = IcuFinder(env, paths, required, timeout, conf_dir)
+    return finder.startSearch()
 
 
 def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None):
@@ -589,7 +668,7 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
         def checkLib(self, env, file, root):
             if ('freetype' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (nafileme.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 return root
         

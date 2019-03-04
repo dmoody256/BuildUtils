@@ -211,7 +211,7 @@ def CheckSizeTLongLong(context):
 def CheckSizeTPointerSize(context, longlong_result):
     result = []
     context.Message(p.ConfigString(
-        'Checking for a pointer-size integer type... '))
+        'Checking for pointer-size type... '))
     if longlong_result:
         result = context.TryRun("""
             # include <stdio.h>
@@ -245,6 +245,7 @@ def CheckSizeTPointerSize(context, longlong_result):
 
 def CheckSharedLibrary(context):
     context.Message(p.ConfigString('Checking for shared library support... '))
+    
     result = context.TryBuild(context.env.SharedLibrary, """
         extern int getchar();
         int hello() {return getchar();}
@@ -254,6 +255,23 @@ def CheckSharedLibrary(context):
     context.Result(result)
     return result
 
+def CheckBSymbolic(context):
+    context.Message(p.ConfigString('Checking for -Bsymbolic-functions... '))
+   
+    prev_flags = None
+    if('LDFLAGS' in context.env):
+        prev_flags = context.env['LDFLAGS']
+
+    context.env.Append(LDFLAGS=['-Bsymbolic-functions'])
+    result = context.TryBuild(context.env.SharedLibrary, """
+        extern int getchar();
+        int hello() {return getchar();}
+    """,
+                              '.c')
+   
+    context.env.Replace(LDFLAGS=prev_flags)
+    context.Result(result)
+    return result
 
 def CheckUnistdH(context):
     context.Message(p.ConfigString('Checking for unistd.h... '))
@@ -287,76 +305,8 @@ def CheckStdargH(context):
         int main() { return 0; }
     """,
                                 '.c')
-    if result:
-        context.env["ZCONFH"] = re.sub(
-            r"def\sHAVE_STDARG_H(.*)\smay\sbe", r" 1\1 was", context.env["ZCONFH"], re.MULTILINE)
     context.Result(result)
     return result
-
-
-def AddZPrefix(context):
-    context.Message(p.ConfigString('Using z_ prefix on all symbols... '))
-    result = context.env['ZPREFIX']
-    if result:
-        context.env["ZCONFH"] = re.sub(
-            r"def\sZ_PREFIX(.*)\smay\sbe", r" 1\1 was", context.env["ZCONFH"], re.MULTILINE)
-    context.Result(result)
-    return result
-
-
-def AddSolo(context):
-    context.Message(p.ConfigString('Using Z_SOLO to build... '))
-    result = context.env['SOLO']
-    if result:
-        context.env["ZCONFH"] = re.sub(
-            r"\#define\sZCONF_H", r"#define ZCONF_H\n#define Z_SOLO", context.env["ZCONFH"], re.MULTILINE)
-    context.Result(result)
-    return result
-
-
-def AddCover(context):
-    context.Message(p.ConfigString('Using code coverage flags... '))
-    result = context.env['COVER']
-    if result:
-        context.env.Append(CCFLAGS=[
-            '-fprofile-arcs',
-            '-ftest-coverage',
-        ])
-        context.env.Append(LINKFLAGS=[
-            '-fprofile-arcs',
-            '-ftest-coverage',
-        ])
-        context.env.Append(LIBS=[
-            'gcov',
-        ])
-    if not context.env['GCC_CLASSIC'] == "":
-        context.env.Replace(CC=context.env['GCC_CLASSIC'])
-    context.Result(result)
-    return result
-
-
-def CheckVsnprintf(context):
-    context.Message(p.ConfigString(
-        "Checking whether to use vs[n]printf() or s[n]printf()... "))
-    result = context.TryCompile("""
-        # include <stdio.h>
-        # include <stdarg.h>
-        # include "zconf.h"
-        int main()
-        {
-        # ifndef STDC
-            choke me
-        # endif
-            return 0;
-        }
-    """,
-                                '.c')
-    if result:
-        context.Result("using vs[n]printf().")
-    else:
-        context.Result("using s[n]printf().")
-    return result
-
 
 def CheckVsnStdio(context):
     context.Message(p.ConfigString("Checking for vsnprintf() in stdio.h... "))
@@ -382,9 +332,9 @@ def CheckVsnStdio(context):
     if not result:
         context.env.Append(CPPDEFINES=["NO_vsnprintf"])
         print(p.ConfigString(
-            "  WARNING: vsnprintf() not found, falling back to vsprintf(). zlib"))
+            "  WARNING: vsnprintf() not found, falling back to vsprintf()."))
         print(p.ConfigString(
-            "  can build but will be open to possible buffer-overflow security"))
+            "  Can build but will be open to possible buffer-overflow security"))
         print(p.ConfigString("  vulnerabilities."))
     return result
 
@@ -415,9 +365,9 @@ def CheckVsnprintfReturn(context):
     if not result:
         context.env.Append(CPPDEFINES=["HAS_vsnprintf_void"])
         print(p.ConfigString(
-            "  WARNING: apparently vsnprintf() does not return a value. zlib"))
+            "  WARNING: apparently vsnprintf() does not return a value."))
         print(p.ConfigString(
-            "  can build but will be open to possible string-format security"))
+            "  Can build but will be open to possible string-format security"))
         print(p.ConfigString("  vulnerabilities."))
     return result
 
@@ -448,9 +398,9 @@ def CheckVsprintfReturn(context):
     if not result:
         context.env.Append(CPPDEFINES=["HAS_vsprintf_void"])
         print(p.ConfigString(
-            "  WARNING: apparently vsprintf() does not return a value. zlib"))
+            "  WARNING: apparently vsprintf() does not return a value."))
         print(p.ConfigString(
-            "  can build but will be open to possible string-format security"))
+            "  Can build but will be open to possible string-format security"))
         print(p.ConfigString("  vulnerabilities."))
     return result
 
@@ -475,9 +425,9 @@ def CheckSnStdio(context):
     if not result:
         context.env.Append(CPPDEFINES=["NO_snprintf"])
         print(p.ConfigString(
-            "  WARNING: snprintf() not found, falling back to sprintf(). zlib"))
+            "  WARNING: snprintf() not found, falling back to sprintf()."))
         print(p.ConfigString(
-            "  can build but will be open to possible buffer-overflow security"))
+            "  Can build but will be open to possible buffer-overflow security"))
         print(p.ConfigString("  vulnerabilities."))
     return result
 
@@ -502,9 +452,9 @@ def CheckSnprintfReturn(context):
     if not result:
         context.env.Append(CPPDEFINES=["HAS_snprintf_void"])
         print(p.ConfigString(
-            "  WARNING: apparently snprintf() does not return a value. zlib"))
+            "  WARNING: apparently snprintf() does not return a value."))
         print(p.ConfigString(
-            "  can build but will be open to possible string-format security"))
+            "  Can build but will be open to possible string-format security"))
         print(p.ConfigString("  vulnerabilities."))
     return result
 
@@ -529,9 +479,9 @@ def CheckSprintfReturn(context):
     if not result:
         context.env.Append(CPPDEFINES=["HAS_sprintf_void"])
         print(p.ConfigString(
-            "  WARNING: apparently sprintf() does not return a value. zlib"))
+            "  WARNING: apparently sprintf() does not return a value."))
         print(p.ConfigString(
-            "  can build but will be open to possible string-format security"))
+            "  Can build but will be open to possible string-format security"))
         print(p.ConfigString("  vulnerabilities."))
     return result
 
@@ -540,8 +490,8 @@ def CheckHidden(context):
     context.Message(p.ConfigString(
         "Checking for attribute(visibility) support... "))
     result = context.TryCompile("""
-        # define ZLIB_INTERNAL __attribute__((visibility ("hidden")))
-        int ZLIB_INTERNAL foo;
+        # define HIDDEN_INTERNAL __attribute__((visibility ("hidden")))
+        int HIDDEN_INTERNAL foo;
         int main()
         {
             return 0;
