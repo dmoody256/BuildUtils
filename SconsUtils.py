@@ -38,7 +38,6 @@ from SCons.Errors import BuildError
 from BuildUtils.ColorPrinter import ColorPrinter
 from BuildUtils import get_num_cpus
 
-
 def SetBuildJobs(env):
     ###################################################
     # Determine number of Jobs
@@ -198,6 +197,7 @@ class ProgressCounter(object):
             self.count = 0.0
             self.progress_sources = dict()
             self.target = None
+            self.target_reported = False
             self.target_install = ''
             for source in sources:
                 # print("Making key: " + os.path.splitext(source)[0])
@@ -233,10 +233,10 @@ class ProgressCounter(object):
                 if(node.get_state() == 2):
                     self.printer.LinkPrint(os.path.splitext(
                         build.target)[0], "Linking " + filename)
-                else:
+                elif not build.target_reported:
                     self.printer.LinkPrint(os.path.splitext(
-                        build.target)[0], "Skipping, already built " + filename)
-
+                        build.target)[0], "Skipping, already built " + filename )
+                    build.target_reported = True
         # TODO: make hanlding this file extensions better
         if(slashed_node.endswith(".obj")
            or slashed_node.endswith(".o")
@@ -264,6 +264,7 @@ class ProgressCounter(object):
                         else:
                             self.printer.CompilePrint(
                                 percent, os.path.splitext(build.target)[0], "Skipping, already built " + filename)
+                            
                         break
                 except KeyError:
                     pass

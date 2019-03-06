@@ -257,19 +257,78 @@ def CheckSharedLibrary(context):
 
 def CheckBSymbolic(context):
     context.Message(p.ConfigString('Checking for -Bsymbolic-functions... '))
-   
-    prev_flags = None
-    if('LDFLAGS' in context.env):
-        prev_flags = context.env['LDFLAGS']
+    if context.env['CC'] == 'gcc' or context.env['CC'] == 'clang':
+        prev_flags = None
+        if('LINKFLAGS' in context.env):
+            prev_flags = context.env['LINKFLAGS']
 
-    context.env.Append(LDFLAGS=['-Bsymbolic-functions'])
-    result = context.TryBuild(context.env.SharedLibrary, """
-        extern int getchar();
-        int hello() {return getchar();}
+        context.env.Append(LINKFLAGS=['-Bsymbolic-functions'])
+        result = context.TryBuild(context.env.SharedLibrary, """
+            extern int getchar();
+            int hello() {return getchar();}
+        """,
+                                '.c')
+    
+        context.env.Replace(LINKFLAGS=prev_flags)
+    else:
+        result = False
+    context.Result(result)
+    return result
+
+def CheckStdCpp11(context):
+    context.Message(p.ConfigString('Checking for c++11 support... '))
+    prev_flags = None
+    if 'CCFLAGS' in context.env:
+        prev_flags = context.env['CCFLAGS']
+
+    if context.env['CC'] == 'cl':
+        context.env.Append(CCFLAGS=['/std:c++11'])
+    else:
+        context.env.Append(CCFLAGS=['-std=c++11'])
+
+    result = context.TryCompile("""
+        int main() { return 0; }
     """,
-                              '.c')
-   
-    context.env.Replace(LDFLAGS=prev_flags)
+                                '.c')
+    context.env['CCFLAGS']=prev_flags                 
+    context.Result(result)
+    return result
+
+def CheckStdCpp14(context):
+    context.Message(p.ConfigString('Checking for c++14 support... '))
+    prev_flags = None
+    if 'CCFLAGS' in context.env:
+        prev_flags = context.env['CCFLAGS']
+
+    if context.env['CC'] == 'cl':
+        context.env.Append(CCFLAGS=['/std:c++14'])
+    else:
+        context.env.Append(CCFLAGS=['-std=c++14'])
+
+    result = context.TryCompile("""
+        int main() { return 0; }
+    """,
+                                '.c')
+    context.env['CCFLAGS']=prev_flags                 
+    context.Result(result)
+    return result
+
+def CheckStdCpp17(context):
+    context.Message(p.ConfigString('Checking for c++17 support... '))
+    prev_flags = None
+    if 'CCFLAGS' in context.env:
+        prev_flags = context.env['CCFLAGS']
+
+    if context.env['CC'] == 'cl':
+        context.env.Append(CCFLAGS=['/std:c++17'])
+    else:
+        context.env.Append(CCFLAGS=['-std=c++17'])
+
+    result = context.TryCompile("""
+        int main() { return 0; }
+    """,
+                                '.c')
+    context.env['CCFLAGS']=prev_flags                 
     context.Result(result)
     return result
 
