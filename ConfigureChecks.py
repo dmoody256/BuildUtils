@@ -6,8 +6,9 @@ from SCons.Conftest import _lang2suffix, _YesNoResult
 
 p = ColorPrinter()
 
-def CheckHeader(context, header_name, header = None, language = None,
-                                                        include_quotes = None):
+
+def CheckHeader(context, header_name, header=None, language=None,
+                include_quotes=None):
     """
     Configure check for a C or C++ header file "header_name".
     Optional "header" can be defined to do something before including the
@@ -38,21 +39,23 @@ def CheckHeader(context, header_name, header = None, language = None,
     lang, suffix, msg = _lang2suffix(language)
     if msg:
         context.Display("Cannot check for header file %s: %s\n"
-                                                          % (header_name, msg))
+                        % (header_name, msg))
         return msg
 
     if not include_quotes:
         include_quotes = "<>"
 
-    text = "%s%s\n#include %s%s%s\n\n" % (includetext, header,
-                             include_quotes[0], header_name, include_quotes[1])
+    text = "%s%s\n#include %s%s%s\n\nint main(){return 0;}" % (includetext, header,
+                                                               include_quotes[0], header_name, include_quotes[1])
 
-    context.Message(p.ConfigString("Checking for %s header file %s... " % (lang, header_name)))
-    ret = context.CompileProg(text, suffix)
+    context.Message(p.ConfigString(
+        "Checking for %s header file %s... " % (lang, header_name)))
+    ret = context.TryCompile(text, suffix)
     context.Result(ret)
     return ret
 
-def CheckFunc(context, function_name, header = None, language = None):
+
+def CheckFunc(context, function_name, header=None, language=None):
     """
     Configure check for a function "function_name".
     "language" should be "C" or "C++" and is used to select the compiler.
@@ -92,7 +95,8 @@ def CheckFunc(context, function_name, header = None, language = None):
 
     lang, suffix, msg = _lang2suffix(language)
     if msg:
-        context.Display(p.ConfigString("Cannot check for %s(): %s\n" % (function_name, msg)))
+        context.Display(p.ConfigString(
+            "Cannot check for %s(): %s\n" % (function_name, msg)))
         return msg
 
     text = """
@@ -109,13 +113,15 @@ def CheckFunc(context, function_name, header = None, language = None):
 
     return 0;
     }
-    """ % { 'name': function_name,
-            'include': includetext,
-            'hdr': header }
-    context.Message(p.ConfigString("Checking for %s function %s()... " % (lang, function_name)))
-    ret = context.BuildProg(text, suffix)
+    """ % {'name': function_name,
+           'include': includetext,
+           'hdr': header}
+    context.Message(p.ConfigString(
+        "Checking for %s function %s()... " % (lang, function_name)))
+    ret = context.TryBuild(context.env.Program, text, suffix)
     context.Result(ret)
     return ret
+
 
 def CheckSolarisAtomics(context):
     context.Message(p.ConfigString('Checking for Solaris Atomics... '))
@@ -245,7 +251,7 @@ def CheckSizeTPointerSize(context, longlong_result):
 
 def CheckSharedLibrary(context):
     context.Message(p.ConfigString('Checking for shared library support... '))
-    
+
     result = context.TryBuild(context.env.SharedLibrary, """
         extern int getchar();
         int hello() {return getchar();}
@@ -254,6 +260,7 @@ def CheckSharedLibrary(context):
 
     context.Result(result)
     return result
+
 
 def CheckBSymbolic(context):
     context.Message(p.ConfigString('Checking for -Bsymbolic-functions... '))
@@ -267,13 +274,14 @@ def CheckBSymbolic(context):
             extern int getchar();
             int hello() {return getchar();}
         """,
-                                '.c')
-    
+                                  '.c')
+
         context.env.Replace(LINKFLAGS=prev_flags)
     else:
         result = False
     context.Result(result)
     return result
+
 
 def CheckStdCpp11(context):
     context.Message(p.ConfigString('Checking for c++11 support... '))
@@ -290,9 +298,10 @@ def CheckStdCpp11(context):
         int main() { return 0; }
     """,
                                 '.c')
-    context.env['CCFLAGS']=prev_flags                 
+    context.env['CCFLAGS'] = prev_flags
     context.Result(result)
     return result
+
 
 def CheckStdCpp14(context):
     context.Message(p.ConfigString('Checking for c++14 support... '))
@@ -309,9 +318,10 @@ def CheckStdCpp14(context):
         int main() { return 0; }
     """,
                                 '.c')
-    context.env['CCFLAGS']=prev_flags                 
+    context.env['CCFLAGS'] = prev_flags
     context.Result(result)
     return result
+
 
 def CheckStdCpp17(context):
     context.Message(p.ConfigString('Checking for c++17 support... '))
@@ -328,9 +338,10 @@ def CheckStdCpp17(context):
         int main() { return 0; }
     """,
                                 '.c')
-    context.env['CCFLAGS']=prev_flags                 
+    context.env['CCFLAGS'] = prev_flags
     context.Result(result)
     return result
+
 
 def CheckUnistdH(context):
     context.Message(p.ConfigString('Checking for unistd.h... '))
@@ -366,6 +377,7 @@ def CheckStdargH(context):
                                 '.c')
     context.Result(result)
     return result
+
 
 def CheckVsnStdio(context):
     context.Message(p.ConfigString("Checking for vsnprintf() in stdio.h... "))
