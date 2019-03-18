@@ -703,3 +703,78 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
 
     finder = FreetypeFinder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()
+
+def FindCairo(env=None, paths=[], required=False, timeout=None, conf_dir=None):
+    class CairoFinder(PackageFinder):
+        def __init__(self, env, paths, required, timeout, conf_dir):
+            super(CairoFinder, self).__init__(env, paths, required, timeout, conf_dir)
+
+            self.packagename = 'cairo'
+
+            if os.environ.get('CAIRO_DIR'):
+                self.user_paths.append(os.environ.get('CAIRO_DIR'))
+
+            if env and env.get('CAIRO_DIR'):
+                self.user_paths.append(env.get('CAIRO_DIR'))
+
+        def compileTest(self, env):
+            env.Append(LIBS=['cairo'])
+            conf = Configure(
+                env,
+                conf_dir=self.conf_dir + "/findcairo",
+                log_file=self.conf_dir + "/findcairo/conf.log")
+
+            result = conf.TryLink("""
+            #include <cairo.h>
+            int main()
+            {
+                const char* version = cairo_version_string();
+                return 0;
+            }
+            """, '.c')
+            conf.Finish()
+            return result
+
+        def checkHeader(self, env, file, root):
+            if file == 'cairo.h':
+                env.Append(CPPPATH=[root])
+                return root
+
+        def checkLib(self, env, file, root):
+            if ('cairo' in file
+                and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
+                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                env.Append(LIBPATH=[root])
+                return root
+        
+        def checkVersion(self, env, file, root):
+            if file == 'cairo-version.h':
+                version_file = os.path.join(root, file)
+                with open(version_file) as f:
+                    contents = f.read()
+                    major = re.search(
+                        r'^#define\s+CAIRO_VERSION_MAJOR\s+(\d+)', contents, re.MULTILINE)
+                    if major:
+                        self.version += str(major.group(1))
+                    minor = re.search(
+                        r'^#define\s+CAIRO_VERSION_MINOR\s+(\d+)', contents, re.MULTILINE)
+                    if minor:
+                        self.version += "." + str(minor.group(1))
+                    patch = re.search(
+                        r'^#define\s+CAIRO_VERSION_MICRO\s+(\d+)', contents, re.MULTILINE)
+                    if patch:
+                        self.version += "." + str(patch.group(1))
+                return version_file
+
+        def foundPackage(self, env, found_libs, found_headers, found_version):
+            if self.env:
+                self.env.Append(
+                    LIBPATH=[found_libs],
+                    CPPPATH=[found_headers],
+                    LIB=['cairo'])
+                return self.env
+            else:
+                return env
+
+    finder = CairoFinder(env, paths, required, timeout, conf_dir)
+    return finder.startSearch()

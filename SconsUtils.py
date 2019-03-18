@@ -29,7 +29,9 @@ import sys
 from SCons.Script.SConscript import call_stack
 from SCons.Script.Main import Progress
 from SCons import Action
+from SCons.Defaults import Copy, Mkdir
 from SCons.Script import Main
+from SCons.Node import NodeList
 from SCons.Environment import Environment
 from SCons.Script.Main import GetOption
 from SCons.Errors import BuildError
@@ -230,9 +232,10 @@ class ProgressCounter(object):
                     self.printer.InfoPrint(
                         self.printer.OKBLUE + "[ " + os.path.splitext(build.target)[0] + " ]" + self.printer.ENDC + " Building " + build.target)
                 filename = os.path.basename(slashed_node)
-                if(node.get_state() == 2):
+                if(node.get_state() == 2) and not build.target_reported:
                     self.printer.LinkPrint(os.path.splitext(
                         build.target)[0], "Linking " + filename)
+                    build.target_reported = True
                 elif not build.target_reported:
                     self.printer.LinkPrint(os.path.splitext(
                         build.target)[0], "Skipping, already built " + filename )
@@ -273,6 +276,7 @@ class ProgressCounter(object):
 def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, install_dir):
 
     build_env = env.Clone()
+    #build_env.Execute(Mkdir(install_dir))
     build_env['PROJECT_DIR'] = build_env.get(
         'PROJECT_DIR', build_env.Dir('.').abspath)
 
@@ -367,17 +371,32 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
     if(prog_type == "shared"):
         prog = build_env.SharedLibrary(
             build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
-        build_env.Install(install_dir, prog)
+        if type(prog) is NodeList:
+            prog_build_name = os.path.basename(prog[0].abspath)
+        else:
+            prog_build_name = os.path.basename(prog.abspath)
+        build_env.AlwaysBuild(build_env.Command(install_dir + '/' + prog_build_name, prog, Copy('$TARGET','$SOURCE')))
+
 
     elif(prog_type == "static"):
         prog = build_env.StaticLibrary(
             build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
-        build_env.Install(install_dir, prog)
+        if type(prog) is NodeList:
+            prog_build_name = os.path.basename(prog[0].abspath)
+        else:
+            prog_build_name = os.path.basename(prog.abspath)
+        build_env.AlwaysBuild(build_env.Command(install_dir + '/' + prog_build_name, prog, Copy('$TARGET','$SOURCE')))
 
     elif(prog_type == 'exec'):
         prog = build_env.Program(
             build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
-        build_env.Install(install_dir, prog)
+        
+        if type(prog) is NodeList:
+            prog_build_name = os.path.basename(prog[0].abspath)
+        else:
+            prog_build_name = os.path.basename(prog.abspath)
+        build_env.AlwaysBuild(build_env.Command(install_dir + '/' + prog_build_name, prog, Copy('$TARGET','$SOURCE')))
+
 
     elif(prog_type == 'unit'):
         prog = build_env.CxxTest(
