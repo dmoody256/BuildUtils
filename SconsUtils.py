@@ -116,14 +116,26 @@ def build_status():
     return (status, failures_message)
 
 
-def display_build_status(odgl_dir, start_time):
+def display_build_status(project_dir, start_time):
     """Display the build status.  Called by atexit.
     Here you could do all kinds of complicated things."""
     status, _unused_failures_message = build_status()
 
     printer = ColorPrinter()
 
-    for filename in glob.glob(odgl_dir + '/build/build_logs/*_compile.txt'):
+    compile_logs = []
+    link_logs = []
+
+    for root, dirs, files in os.walk(project_dir + '/build'):
+        for name in files:
+            if name.endswith('_compile.txt'):
+                compile_logs.append(os.path.join(root, name))
+            if name.endswith('_link.txt'):
+                link_logs.append(os.path.join(root, name))
+            
+           
+
+    for filename in compile_logs:
         compileOutput = []
         sourcefile = os.path.basename(filename).replace("_compile.txt", "")
         f = open(filename, "r")
@@ -153,7 +165,7 @@ def display_build_status(odgl_dir, start_time):
         if found_info:
             print(pending_output)
 
-    for filename in glob.glob(odgl_dir + '/build/build_logs/*_link.txt'):
+    for filename in link_logs:
         linkOutput = []
         sourcefile = os.path.basename(filename).replace("_link.txt", "")
         f = open(filename, "r")

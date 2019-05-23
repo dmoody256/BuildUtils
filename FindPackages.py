@@ -212,7 +212,8 @@ class PackageFinder(object):
                     self.p.InfoPrint(" Found " + self.packagename + " version " + self.version)
                 else:
                     self.p.InfoPrint(" Found " + self.packagename + " with unknown version.")
-                self.env.ParseConfig(pkgconfig_str)
+                if self.env:
+                    self.env.ParseConfig(pkgconfig_str)
                 return test_env
 
     def addPlatformPaths(self):
