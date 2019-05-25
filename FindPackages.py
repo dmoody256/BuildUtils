@@ -15,6 +15,9 @@ Utility functios used for find packages.
 """
 
 # python
+from BuildUtils.ColorPrinter import ColorPrinter
+from SCons.Script.SConscript import Configure
+from SCons.Environment import Environment
 import os
 import glob
 import time
@@ -35,11 +38,6 @@ if sys.platform == 'win32':
         from winreg import *
     except ImportError:  # Python 2
         from _winreg import *
-
-from SCons.Environment import Environment
-from SCons.Script.SConscript import Configure
-
-from BuildUtils.ColorPrinter import ColorPrinter
 
 
 def GetTargetArch(env=None):
@@ -134,6 +132,7 @@ def getKey(rootTree, keystr, value):
         except:
             pass
 
+
 class PackageFinder(object):
     def __init__(self, env, paths, required, timeout, conf_dir):
 
@@ -164,10 +163,10 @@ class PackageFinder(object):
                 async_result.get()
                 if self.required:
                     self.p.ErrorPrint("Timedout after " + str(timeout) +
-                                        " seconds searching for " + self.packagename)
+                                      " seconds searching for " + self.packagename)
                 else:
                     self.p.InfoPrint(" Timedout after " + str(timeout) +
-                                        " seconds searching for " + self.packagename)
+                                     " seconds searching for " + self.packagename)
                 return None
         else:
             return self.searchThread()
@@ -180,41 +179,48 @@ class PackageFinder(object):
         return test_env
 
     def tryPackageConfig(self):
-        
-        if any(os.access(os.path.join(path, 'pkg-config'), os.X_OK) for path in os.environ["PATH"].split(os.pathsep)):
-            test_env = self.getTestEnv()
-            pkgconfig_str = 'pkg-config ' + self.packagename + " --cflags --libs"
-            
-            test_env.ParseConfig(pkgconfig_str)
-            if self.compileTest(test_env):
-                
-                header_dirs = subprocess.check_output(
-                    ['pkg-config', self.packagename, "--cflags"]).decode('utf8').strip().split(' ')
-                header_dirs += ['-I/usr/include']
-                found_version = False
-                for path in header_dirs:
-                    if path.startswith('-I'):
-                        path = path[2:]
-                        for root, dirs, files in os.walk(path, topdown=False):
-                            for name in files:
-                                if self.timedout['timedout']:
-                                    return
-                                version_file = self.checkVersion(test_env, name, root)
-                                if version_file:
-                                    found_version = version_file
+        try:
+            if any(os.access(os.path.join(path, 'pkg-config'), os.X_OK) for path in os.environ["PATH"].split(os.pathsep)):
+                test_env = self.getTestEnv()
+                pkgconfig_str = 'pkg-config ' + self.packagename + " --cflags --libs"
+
+                test_env.ParseConfig(pkgconfig_str)
+                if self.compileTest(test_env):
+
+                    header_dirs = subprocess.check_output(
+                        ['pkg-config', self.packagename, "--cflags"]).decode('utf8').strip().split(' ')
+                    header_dirs += ['-I/usr/include']
+                    found_version = False
+                    for path in header_dirs:
+                        if path.startswith('-I'):
+                            path = path[2:]
+                            for root, dirs, files in os.walk(path, topdown=False):
+                                for name in files:
+                                    if self.timedout['timedout']:
+                                        return
+                                    version_file = self.checkVersion(
+                                        test_env, name, root)
+                                    if version_file:
+                                        found_version = version_file
+                                        break
+                                if found_version:
                                     break
-                            if found_version:
-                                break
-                    
+
+                        if found_version:
+                            break
                     if found_version:
-                        break
-                if found_version:
-                    self.p.InfoPrint(" Found " + self.packagename + " version " + self.version)
-                else:
-                    self.p.InfoPrint(" Found " + self.packagename + " with unknown version.")
-                if self.env:
-                    self.env.ParseConfig(pkgconfig_str)
-                return test_env
+                        self.p.InfoPrint(
+                            " Found " + self.packagename + " version " + self.version)
+                    else:
+                        self.p.InfoPrint(
+                            " Found " + self.packagename + " with unknown version.")
+                    if self.env:
+                        self.env.ParseConfig(pkgconfig_str)
+                    return test_env
+        except OSError:
+            pass
+
+        return self.getTestEnv()
 
     def addPlatformPaths(self):
         test_env = self.getTestEnv()
@@ -236,17 +242,19 @@ class PackageFinder(object):
                 self.sys_paths.append("C:/MinGW")
                 # check user directory, and program files
                 self.sys_paths.append(os.environ.get('USERPROFILE'))
-                    
+
         elif 'linux' in sys.platform:
             if not IsCrossCompile(test_env):
                 if GetTargetArch(test_env) == 'amd64':
                     self.sys_paths.append(["/usr/include", "/usr/lib64"])
-                    self.sys_paths.append(["/usr/include", "/usr/lib/x86_64-linux-gnu"])
+                    self.sys_paths.append(
+                        ["/usr/include", "/usr/lib/x86_64-linux-gnu"])
                 else:
-                    self.sys_paths.append(["/usr/include", "/usr/lib/i386-linux-gnu"])
+                    self.sys_paths.append(
+                        ["/usr/include", "/usr/lib/i386-linux-gnu"])
                 self.sys_paths.append(["/usr/local/include", "/usr/local/lib"])
                 self.sys_paths.append(["/usr/include", "/usr/lib"])
-                
+
     def search(self, paths, required=False):
 
         found_headers = None
@@ -296,7 +304,7 @@ class PackageFinder(object):
                             break
                     if found_headers and found_libs:
                         break
-                    
+
             if found_headers and found_libs:
                 for root, dirs, files in os.walk(found_headers, topdown=False):
                     for name in files:
@@ -311,10 +319,11 @@ class PackageFinder(object):
 
                 if self.compileTest(test_env):
                     self.p.InfoPrint(" Found " + self.packagename + " version " + self.version +
-                                        " in " + str(found_headers))
+                                     " in " + str(found_headers))
                     return self.foundPackage(test_env, found_libs, found_headers, found_version)
                 else:
-                    self.p.InfoPrint(" Candidate failed in " + found_headers + " and " + found_libs)
+                    self.p.InfoPrint(" Candidate failed in " +
+                                     found_headers + " and " + found_libs)
                     test_env = self.getTestEnv()
                     found_libs = None
                     found_headers = None
@@ -347,16 +356,18 @@ class PackageFinder(object):
         if result:
             return result
         if self.required:
-            self.p.ErrorPrint("Failed to find working " + self.packagename + " package.")
+            self.p.ErrorPrint("Failed to find working " +
+                              self.packagename + " package.")
         else:
             self.p.InfoPrint(" Couldn't find " + self.packagename + ".")
 
-   
+
 def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=None):
 
     class Graphite2Finder(PackageFinder):
         def __init__(self, env, paths, required, timeout, conf_dir):
-            super(Graphite2Finder, self).__init__(env, paths, required, timeout, conf_dir)
+            super(Graphite2Finder, self).__init__(
+                env, paths, required, timeout, conf_dir)
             self.packagename = 'graphite2'
 
             if os.environ.get('GRAPHITE2_DIR'):
@@ -393,10 +404,10 @@ def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=Non
         def checkLib(self, env, file, root):
             if ('graphite2' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                    and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 return root
-        
+
         def checkVersion(self, env, file, root):
             if file == 'Font.h' and os.path.basename(root) == 'graphite2':
                 version_file = os.path.join(root, file)
@@ -425,7 +436,7 @@ def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=Non
                 return self.env
             else:
                 return env
-                
+
     finder = Graphite2Finder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()
 
@@ -433,7 +444,8 @@ def FindGraphite2(env=None, paths=[], required=False, timeout=None, conf_dir=Non
 def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
     class GlibFinder(PackageFinder):
         def __init__(self, env, paths, required, timeout, conf_dir):
-            super(GlibFinder, self).__init__(env, paths, required, timeout, conf_dir)
+            super(GlibFinder, self).__init__(
+                env, paths, required, timeout, conf_dir)
 
             self.packagename = 'glib-2.0'
 
@@ -476,7 +488,7 @@ def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
         def checkLib(self, env, file, root):
             if ('glib-2.0' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                    and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 found_headers = False
                 for configroot, dirs, files in os.walk(root, topdown=False):
@@ -519,7 +531,7 @@ def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
                 return self.env
             else:
                 return env
-    
+
     finder = GlibFinder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()
 
@@ -527,7 +539,8 @@ def FindGlib(env=None, paths=[], required=False, timeout=None, conf_dir=None):
 def FindIcu(env=None, paths=[], required=False, timeout=None, conf_dir=None):
     class IcuFinder(PackageFinder):
         def __init__(self, env, paths, required, timeout, conf_dir):
-            super(IcuFinder, self).__init__(env, paths, required, timeout, conf_dir)
+            super(IcuFinder, self).__init__(
+                env, paths, required, timeout, conf_dir)
             self.packagename = 'icu-uc'
 
             if os.environ.get('ICU_DIR'):
@@ -568,15 +581,15 @@ def FindIcu(env=None, paths=[], required=False, timeout=None, conf_dir=None):
         def checkLib(self, env, file, root):
             if ('icuuc' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                    and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 return root
             if ('icudata' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                    and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 return root
-        
+
         def checkVersion(self, env, file, root):
             if file == 'uvernum.h' and os.path.basename(root) == 'unicode':
                 version_file = os.path.join(root, file)
@@ -605,7 +618,7 @@ def FindIcu(env=None, paths=[], required=False, timeout=None, conf_dir=None):
                 return self.env
             else:
                 return env
-    
+
     finder = IcuFinder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()
 
@@ -613,7 +626,8 @@ def FindIcu(env=None, paths=[], required=False, timeout=None, conf_dir=None):
 def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None):
     class FreetypeFinder(PackageFinder):
         def __init__(self, env, paths, required, timeout, conf_dir):
-            super(FreetypeFinder, self).__init__(env, paths, required, timeout, conf_dir)
+            super(FreetypeFinder, self).__init__(
+                env, paths, required, timeout, conf_dir)
 
             self.packagename = 'freetype2'
 
@@ -643,7 +657,6 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
             conf.Finish()
             return result
 
-
         def addPlatformPaths(self):
             test_env = self.getTestEnv()
             if sys.platform == 'win32':
@@ -669,10 +682,10 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
         def checkLib(self, env, file, root):
             if ('freetype' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                    and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 return root
-        
+
         def checkVersion(self, env, file, root):
             if file == 'freetype.h':
                 version_file = os.path.join(root, file)
@@ -705,10 +718,12 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
     finder = FreetypeFinder(env, paths, required, timeout, conf_dir)
     return finder.startSearch()
 
+
 def FindCairo(env=None, paths=[], required=False, timeout=None, conf_dir=None):
     class CairoFinder(PackageFinder):
         def __init__(self, env, paths, required, timeout, conf_dir):
-            super(CairoFinder, self).__init__(env, paths, required, timeout, conf_dir)
+            super(CairoFinder, self).__init__(
+                env, paths, required, timeout, conf_dir)
 
             self.packagename = 'cairo'
 
@@ -744,10 +759,10 @@ def FindCairo(env=None, paths=[], required=False, timeout=None, conf_dir=None):
         def checkLib(self, env, file, root):
             if ('cairo' in file
                 and (file.startswith(env["SHLIBPREFIX"]) or file.startswith(env["LIBPREFIX"]))
-                and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
+                    and (file.endswith(env["SHLIBSUFFIX"]) or file.endswith(env["SHLIBSUFFIX"]))):
                 env.Append(LIBPATH=[root])
                 return root
-        
+
         def checkVersion(self, env, file, root):
             if file == 'cairo-version.h':
                 version_file = os.path.join(root, file)
