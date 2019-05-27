@@ -55,7 +55,7 @@ def CheckHeader(context, header_name, header=None, language=None,
     return ret
 
 
-def CheckFunc(context, function_name, header=None, language=None):
+def CheckFunc(context, function_name, args='', header=None, language=None):
     """
     Configure check for a function "function_name".
     "language" should be "C" or "C++" and is used to select the compiler.
@@ -108,12 +108,13 @@ def CheckFunc(context, function_name, header=None, language=None):
     #if defined (__stub_%(name)s) || defined (__stub___%(name)s)
     fail fail fail
     #else
-    %(name)s();
+    %(name)s(%(args)s);
     #endif
 
     return 0;
     }
     """ % {'name': function_name,
+           'args': args,
            'include': includetext,
            'hdr': header}
     context.Message(p.ConfigString(
@@ -121,6 +122,10 @@ def CheckFunc(context, function_name, header=None, language=None):
     ret = context.TryBuild(context.env.Program, text, suffix)
     context.Result(ret)
     return ret
+
+
+def CheckRoundFunc(context):
+    return CheckFunc(context, 'round', '0.5', '#include <math.h>')
 
 
 def CheckSolarisAtomics(context):
