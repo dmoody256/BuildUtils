@@ -40,6 +40,7 @@ from SCons.Errors import BuildError
 from BuildUtils.ColorPrinter import ColorPrinter
 from BuildUtils import get_num_cpus
 
+
 def SetBuildJobs(env):
     ###################################################
     # Determine number of Jobs
@@ -132,8 +133,6 @@ def display_build_status(project_dir, start_time):
                 compile_logs.append(os.path.join(root, name))
             if name.endswith('_link.txt'):
                 link_logs.append(os.path.join(root, name))
-            
-           
 
     for filename in compile_logs:
         compileOutput = []
@@ -206,7 +205,7 @@ class ProgressCounter(object):
     """
     class ProgressBuild():
 
-        def __init__(self, sources, target):
+        def __init__(self, sources, target, static):
 
             self.count = 0.0
             self.progress_sources = dict()
@@ -217,40 +216,46 @@ class ProgressCounter(object):
                 # print("Making key: " + os.path.splitext(source)[0])
                 self.progress_sources[os.path.splitext(source)[0]] = False
             self.target = target
+            if static:
+                self.static_lib = "-static"
+            else:
+                self.static_lib = ""
 
     def __init__(self):
         self.printer = ColorPrinter()
         self.progress_builders = []
 
-    def AddBuild(self, env, sources, target):
+    def AddBuild(self, env, sources, target, static=False):
         env['PROJECT_DIR'] = env.get(
             'PROJECT_DIR', env.Dir('.').abspath)
         # self.printer.SetSize(self.target_name_size)
         # pathed_sources = [env.File(source).abspath.replace('\\', '/').replace(env['PROJECT_DIR'] + '/', '')
         #                  for source in sources]
         self.progress_builders.append(
-            self.ProgressBuild(sources, target))
+            self.ProgressBuild(sources, target, static))
 
     def __call__(self, node, *args, **kw):
         # print(str(node))
 
         slashed_node = str(node).replace("\\", "/")
         for build in self.progress_builders:
-           
-            #print(build.target + ": "+str(node.get_state())+" - " + slashed_node)
+
+            # print(build.target + ": "+str(node.get_state())+" - " + slashed_node)
             if(slashed_node.endswith(build.target)):
+
+                target_name = os.path.splitext(build.target)[
+                    0] + build.static_lib
 
                 if(build.count == 0):
                     self.printer.InfoPrint(
-                        self.printer.OKBLUE + "[ " + os.path.splitext(build.target)[0] + " ]" + self.printer.ENDC + " Building " + build.target)
+                        self.printer.OKBLUE + "[ " + target_name + " ]" + self.printer.ENDC + " Building " + build.target)
                 filename = os.path.basename(slashed_node)
                 if(node.get_state() == 2) and not build.target_reported:
-                    self.printer.LinkPrint(os.path.splitext(
-                        build.target)[0], "Linking " + filename)
+                    self.printer.LinkPrint(target_name, "Linking " + filename)
                     build.target_reported = True
                 elif not build.target_reported:
-                    self.printer.LinkPrint(os.path.splitext(
-                        build.target)[0], "Skipping, already built " + filename )
+                    self.printer.LinkPrint(
+                        target_name, "Skipping, already built " + filename)
                     build.target_reported = True
         # TODO: make hanlding this file extensions better
         if(slashed_node.endswith(".obj")
@@ -258,15 +263,17 @@ class ProgressCounter(object):
            or slashed_node.endswith(".os")):
 
             slashed_node_file = os.path.splitext(slashed_node)[0]
-            #print(" - " + slashed_node_file)
+            # print(" - " + slashed_node_file)
             for build in self.progress_builders:
                 try:
                     if(not build.progress_sources[slashed_node_file]):
                         build.progress_sources[slashed_node_file] = True
+                        target_name = os.path.splitext(build.target)[
+                            0] + build.static_lib
 
                         if(build.count == 0):
                             self.printer.InfoPrint(
-                                self.printer.OKBLUE + "[ " + os.path.splitext(build.target)[0] + " ]" + self.printer.ENDC + " Building " + build.target)
+                                self.printer.OKBLUE + "[ " + target_name + " ]" + self.printer.ENDC + " Building " + build.target)
 
                         build.count += 1
                         percent = build.count / \
@@ -275,11 +282,11 @@ class ProgressCounter(object):
 
                         if(node.get_state() == 2):
                             self.printer.CompilePrint(
-                                percent, os.path.splitext(build.target)[0], "Compiling " + filename)
+                                percent, target_name, "Compiling " + filename)
                         else:
                             self.printer.CompilePrint(
-                                percent, os.path.splitext(build.target)[0], "Skipping, already built " + filename)
-                            
+                                percent, target_name, "Skipping, already built " + filename)
+
                         break
                 except KeyError:
                     pass
@@ -288,7 +295,7 @@ class ProgressCounter(object):
 def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, install_dir):
 
     build_env = env.Clone()
-    #build_env.Execute(Mkdir(install_dir))
+    # build_env.Execute(Mkdir(install_dir))
     build_env['PROJECT_DIR'] = build_env.get(
         'PROJECT_DIR', build_env.Dir('.').abspath)
 
@@ -335,7 +342,7 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
             '$SHLIBPREFIX') + prog_name + env.subst('$SHLIBSUFFIX'))
     elif prog_type == 'static':
         progress.AddBuild(env, source_build_files, env.subst(
-            '$LIBPREFIX') + prog_name + env.subst('$LIBSUFFIX'))
+            '$LIBPREFIX') + prog_name + env.subst('$LIBSUFFIX'), True)
     elif prog_type == 'exec' or prog_type == 'unit':
         progress.AddBuild(env, source_build_files, env.subst(
             '$PROGPREFIX') + prog_name + env.subst('$PROGSUFFIX'))
@@ -387,8 +394,8 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
             prog_build_name = os.path.basename(prog[0].abspath)
         else:
             prog_build_name = os.path.basename(prog.abspath)
-        build_env.AlwaysBuild(build_env.Command(install_dir + '/' + prog_build_name, prog, Copy('$TARGET','$SOURCE')))
-
+        build_env.AlwaysBuild(build_env.Command(
+            install_dir + '/' + prog_build_name, prog, Copy('$TARGET', '$SOURCE')))
 
     elif(prog_type == "static"):
         prog = build_env.StaticLibrary(
@@ -397,18 +404,19 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
             prog_build_name = os.path.basename(prog[0].abspath)
         else:
             prog_build_name = os.path.basename(prog.abspath)
-        build_env.AlwaysBuild(build_env.Command(install_dir + '/' + prog_build_name, prog, Copy('$TARGET','$SOURCE')))
+        build_env.AlwaysBuild(build_env.Command(
+            install_dir + '/' + prog_build_name, prog, Copy('$TARGET', '$SOURCE')))
 
     elif(prog_type == 'exec'):
         prog = build_env.Program(
             build_env['PROJECT_DIR'] + "/" + build_dir + "/" + prog_name, source_objs)
-        
+
         if type(prog) is NodeList:
             prog_build_name = os.path.basename(prog[0].abspath)
         else:
             prog_build_name = os.path.basename(prog.abspath)
-        build_env.AlwaysBuild(build_env.Command(install_dir + '/' + prog_build_name, prog, Copy('$TARGET','$SOURCE')))
-
+        build_env.AlwaysBuild(build_env.Command(
+            install_dir + '/' + prog_build_name, prog, Copy('$TARGET', '$SOURCE')))
 
     elif(prog_type == 'unit'):
         prog = build_env.CxxTest(
