@@ -407,11 +407,11 @@ def CheckVsnStdio(context):
     context.Result(result)
     if not result:
         context.env.Append(CPPDEFINES=["NO_vsnprintf"])
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  WARNING: vsnprintf() not found, falling back to vsprintf()."))
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  Can build but will be open to possible buffer-overflow security"))
-        print(p.ConfigString("  vulnerabilities."))
+        p.PrintItem(p.ConfigString("  vulnerabilities."))
     return result
 
 
@@ -440,11 +440,11 @@ def CheckVsnprintfReturn(context):
     context.Result(result)
     if not result:
         context.env.Append(CPPDEFINES=["HAS_vsnprintf_void"])
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  WARNING: apparently vsnprintf() does not return a value."))
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  Can build but will be open to possible string-format security"))
-        print(p.ConfigString("  vulnerabilities."))
+        p.PrintItem(p.ConfigString("  vulnerabilities."))
     return result
 
 
@@ -473,11 +473,11 @@ def CheckVsprintfReturn(context):
     context.Result(result)
     if not result:
         context.env.Append(CPPDEFINES=["HAS_vsprintf_void"])
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  WARNING: apparently vsprintf() does not return a value."))
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  Can build but will be open to possible string-format security"))
-        print(p.ConfigString("  vulnerabilities."))
+        p.PrintItem(p.ConfigString("  vulnerabilities."))
     return result
 
 
@@ -500,11 +500,11 @@ def CheckSnStdio(context):
     context.Result(result)
     if not result:
         context.env.Append(CPPDEFINES=["NO_snprintf"])
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  WARNING: snprintf() not found, falling back to sprintf()."))
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  Can build but will be open to possible buffer-overflow security"))
-        print(p.ConfigString("  vulnerabilities."))
+        p.PrintItem(p.ConfigString("  vulnerabilities."))
     return result
 
 
@@ -527,11 +527,11 @@ def CheckSnprintfReturn(context):
     context.Result(result)
     if not result:
         context.env.Append(CPPDEFINES=["HAS_snprintf_void"])
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  WARNING: apparently snprintf() does not return a value."))
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  Can build but will be open to possible string-format security"))
-        print(p.ConfigString("  vulnerabilities."))
+        p.PrintItem(p.ConfigString("  vulnerabilities."))
     return result
 
 
@@ -554,11 +554,11 @@ def CheckSprintfReturn(context):
     context.Result(result)
     if not result:
         context.env.Append(CPPDEFINES=["HAS_sprintf_void"])
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  WARNING: apparently sprintf() does not return a value."))
-        print(p.ConfigString(
+        p.PrintItem(p.ConfigString(
             "  Can build but will be open to possible string-format security"))
-        print(p.ConfigString("  vulnerabilities."))
+        p.PrintItem(p.ConfigString("  vulnerabilities."))
     return result
 
 

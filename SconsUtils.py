@@ -24,21 +24,27 @@ import platform
 import subprocess
 import re
 import sys
+import collections.abc
 
 # scons
 from SCons.Script.SConscript import call_stack
 from SCons.Script.Main import Progress
 from SCons import Action
-from SCons.Defaults import Copy, Mkdir
+from SCons.Defaults import Copy, mkdir_func, get_paths_str
 from SCons.Script import Main
 from SCons.Node import NodeList
 from SCons.Environment import Environment
 from SCons.Script.Main import GetOption
 from SCons.Errors import BuildError
+from SCons.Platform import TempFileMunge
+from SCons.Action import ActionFactory
 
 
 from BuildUtils.ColorPrinter import ColorPrinter
 from BuildUtils import get_num_cpus
+
+Mkdir = ActionFactory(mkdir_func,
+                      lambda dir: ColorPrinter().InfoPrint(' Mkdir(%s)' % get_paths_str(dir)))
 
 
 def SetBuildJobs(env):
@@ -122,6 +128,7 @@ def display_build_status(project_dir, start_time):
     Here you could do all kinds of complicated things."""
     status, _unused_failures_message = build_status()
 
+    ColorPrinter.cleanUpPrinter()
     printer = ColorPrinter()
 
     compile_logs = []
@@ -196,6 +203,25 @@ def display_build_status(project_dir, start_time):
     elif status == 'ok':
         print(printer.OKGREEN + "Build succeeded" + printer.ENDC +
               " in %.3f seconds" % (time.time() - start_time))
+
+
+class TempFileMungeOutput(TempFileMunge):
+
+    def __call__(self, target, source, env, for_signature):
+        cmdlist = super(TempFileMungeOutput, self).__call__(
+            target, source, env, for_signature)
+        if isinstance(cmdlist, collections.abc.Sequence) and not isinstance(cmdlist, str):
+            newcmdlist = [cmdlist[0]]
+            linkpath = cmdlist[1].split('\n')
+            newcmdlist.append(linkpath[0])
+            newcmdlist.append('2>&1')
+            newcmdlist.append('>')
+            newcmdlist.append(env['PROJECT_DIR'] + '/' + env['TEMPFILEBUILDDIR'] +
+                              '/build_logs/' + env['TEMPFILEPROGNAME'] + '_link.txt')
+            return newcmdlist
+        else:
+            return (cmdlist + ' 2>&1 > ' + env['PROJECT_DIR'] + '/' + env['TEMPFILEBUILDDIR'] +
+                    '/build_logs/' + env['TEMPFILEPROGNAME'] + '_link.txt')
 
 
 class ProgressCounter(object):
@@ -298,7 +324,9 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
     # build_env.Execute(Mkdir(install_dir))
     build_env['PROJECT_DIR'] = build_env.get(
         'PROJECT_DIR', build_env.Dir('.').abspath)
-
+    build_env['TEMPFILE'] = TempFileMungeOutput
+    build_env['TEMPFILEBUILDDIR'] = build_dir
+    build_env['TEMPFILEPROGNAME'] = prog_name
     header_files = []
     if prog_type == "unit":
         temp = []
@@ -309,9 +337,18 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
 
     win_redirect = ""
     linux_redirect = "2>&1"
-    if("Windows" in platform.system()):
+    if sys.platform == 'win32':
         win_redirect = "2>&1"
         linux_redirect = ""
+
+    # clear out all previous build compile logs
+    build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs"
+    import os
+    for root, dirs, files in os.walk(build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs"):
+        for name in files:
+            if name.endswith('.txt'):
+                #os.unlink(os.path.join(root, name))
+                pass
 
     source_objs = []
     source_build_files = []
@@ -348,40 +385,13 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
             '$PROGPREFIX') + prog_name + env.subst('$PROGSUFFIX'))
 
     if(prog_type == 'shared'):
-        if("Windows" in platform.system()):
-            combinedActions = build_env['SHLINKCOM'].list
-
-            new_actions = []
-            for i in range(len(combinedActions)):
-                if(i == 0):
-                    new_actions.append(Action.Action('${TEMPFILE("$SHLINK $SHLINKFLAGS $_SHLINK_TARGETS $_LIBDIRFLAGS $_LIBFLAGS $_PDB $_SHLINK_SOURCES", "$SHLINKCOMSTR")} 2>&1 > \"' +
-                                                     build_env['PROJECT_DIR'] + '/' + build_dir +
-                                                     '/build_logs/' + prog_name + '_link.txt\"'))
-                else:
-                    new_actions.append(combinedActions[i])
-            build_env['SHLINKCOM'] = new_actions
-        else:
+        if sys.platform != 'win32':
             linkcom_string_match = re.sub(
                 r"\s\>\".*", "\",", build_env['SHLINKCOM'])
             build_env['SHLINKCOM'] = linkcom_string_match + str(
                 " > " + build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs/" + prog_name + "_link.txt 2>&1")
     elif(prog_type == 'static' or prog_type == 'exec' or prog_type == 'unit'):
-        if("Windows" in platform.system()):
-            try:
-                combinedActions = build_env['LINKCOM'].list
-            except AttributeError as e:
-                combinedActions = build_env['LINKCOM']
-            new_actions = []
-            for i in range(len(combinedActions)):
-                if(i == 0):
-                    new_actions.append(Action.Action('${TEMPFILE("$LINK $LINKFLAGS /OUT:$TARGET.windows $_LIBDIRFLAGS $_LIBFLAGS $_PDB $SOURCES.windows", "$LINKCOMSTR")} 2>&1 > \"' +
-                                                     build_env['PROJECT_DIR'] + '/' + build_dir + '/build_logs/' + prog_name + '_link.txt\"'))
-                else:
-                    new_actions.append(combinedActions[i])
-
-            build_env['LINKCOM'] = new_actions
-
-        else:
+        if sys.platform != 'win32':
             linkcom_string_match = re.sub(
                 r"\s\>\".*", "\",", build_env['LINKCOM'])
             build_env['LINKCOM'] = linkcom_string_match + str(
@@ -425,10 +435,7 @@ def SetupBuildEnv(env, progress, prog_type, prog_name, source_files, build_dir, 
             if os.path.basename(os.path.splitext(str(exe))[0]) == prog_name:
                 for node in exe.children():
                     if os.path.basename(os.path.splitext(str(node))[0]) == prog_name:
-                        if("windows" in platform.system().lower()):
-                            node.get_executor().set_action_list(Action.Action('${TEMPFILE("$CXX $_MSVC_OUTPUT_FLAG /c $CHANGED_SOURCES $CXXFLAGS $CCFLAGS $_CCCOMCOM","$CXXCOMSTR")} ' + win_redirect +
-                                                                              " > \"" + build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs/" + prog_name + "_compile.txt\" " + linux_redirect, '$CXXCOMSTR'))
-                        else:
+                        if sys.platform != 'win32':
                             node.get_executor().set_action_list(Action.Action('$CXX -o $TARGET -c $CXXFLAGS $CCFLAGS $_CCCOMCOM $SOURCES ' + win_redirect +
                                                                               " > \"" + build_env['PROJECT_DIR'] + "/" + build_dir + "/build_logs/" + prog_name + "_compile.txt\" " + linux_redirect, '$CXXCOMSTR'))
 
@@ -516,7 +523,7 @@ def run_visual_tests(base_dir):
             printer.InfoPrint(' Silkuli Installed!')
         else:
             printer.InfoPrint(' Silkuli Failed to install!:')
-            print(output.decode("utf-8"))
+            # print(output.decode("utf-8"))
 
     test_env = os.environ
     if 'SIKULI_DIR' not in os.environ:
@@ -533,7 +540,7 @@ def run_visual_tests(base_dir):
         env=test_env
     )
     output = proc.communicate()[0]
-    print(output)
+    # print(output)
 
 
 def cppcheck_command(base_dir, jobs):

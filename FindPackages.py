@@ -265,7 +265,7 @@ class PackageFinder(object):
         for test_path in paths:
             self.p.InfoPrint(" Looking in " + str(test_path))
 
-            # include and lib paths passed seperatly
+            # include and lib paths passed separately
             if type(test_path) is list:
                 for root, dirs, files in os.walk(test_path[0], topdown=False):
                     for name in files:
@@ -345,11 +345,12 @@ class PackageFinder(object):
             return
 
         # next try package config
-        result = self.tryPackageConfig()
-        if result:
-            return result
-        if self.timedout['timedout']:
-            return
+        if 'linux' in sys.platform:
+            result = self.tryPackageConfig()
+            if result:
+                return result
+            if self.timedout['timedout']:
+                return
 
         # finally try system paths
         result = self.search(self.sys_paths, required=self.required)
@@ -710,7 +711,7 @@ def FindFreetype(env=None, paths=[], required=False, timeout=None, conf_dir=None
                 self.env.Append(
                     LIBPATH=[found_libs],
                     CPPPATH=[found_headers],
-                    LIB=['freetype'])
+                    LIBS=['freetype'])
                 return self.env
             else:
                 return env

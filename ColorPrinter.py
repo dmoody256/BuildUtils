@@ -1,5 +1,10 @@
 import platform
 import os
+import sys
+import time
+
+from queue import Queue, Empty
+from threading import Thread
 
 
 class ColorPrinter():
@@ -8,9 +13,21 @@ class ColorPrinter():
     """
 
     warned = False
+    threadStarted = False
+    terminateThread = False
+    printThread = None
+    printQueue = Queue()
 
     def __init__(self, size=1):
         self.size = size
+
+        if not ColorPrinter.threadStarted:
+            ColorPrinter.terminateThread = False
+            ColorPrinter.printThread = Thread(
+                target=ColorPrinter.printQueueThread)
+            ColorPrinter.printThread.daemon = True
+            ColorPrinter.threadStarted = True
+            ColorPrinter.printThread.start()
 
         try:
             from colorama import init
@@ -24,7 +41,7 @@ class ColorPrinter():
         except ImportError:
             if "windows" in platform.system().lower():
                 if not ColorPrinter.warned:
-                    print(
+                    ColorPrinter.printQueue.put(
                         "[!WARN!!] Failed to import colorama, build output will be uncolored.")
                     ColorPrinter.warned = True
                 self.HEADER = ''
@@ -41,8 +58,31 @@ class ColorPrinter():
                 self.FAIL = '\033[91m'
                 self.ENDC = '\033[0m'
 
+    def cleanUpPrinter():
+        ColorPrinter.terminateThread = True
+        ColorPrinter.printThread.join()
+
+    def printQueueThread():
+        while True:
+            time.sleep(0.001)
+            while not ColorPrinter.printQueue.empty():
+                try:
+                    printItem = ColorPrinter.printQueue.get(
+                        block=False)
+                    sys.stdout.write(printItem + os.linesep)
+                except Empty:
+                    pass
+            if ColorPrinter.terminateThread:
+                break
+
     def SetSize(self, size):
         self.size = size
+
+    def PrintItem(self, item):
+        """
+        Put something in the print queue to be printed.
+        """
+        ColorPrinter.printQueue.put(item)
 
     def highlight_word(self, line, word, color):
         """
@@ -54,13 +94,14 @@ class ColorPrinter():
         """
         Prints a purple info message.
         """
-        print(self.InfoString(message))
+        ColorPrinter.printQueue.put(self.InfoString(message))
 
     def CppCheckPrint(self, message):
         """
         Prints a purple info message.
         """
-        print(self.HEADER + "[CPPCHK!]" + self.ENDC + message)
+        ColorPrinter.printQueue.put(
+            self.HEADER + "[CPPCHK!]" + self.ENDC + message)
 
     def InfoString(self, message):
         """
@@ -72,7 +113,8 @@ class ColorPrinter():
         """
         Prints a red error message.
         """
-        print(self.FAIL + "[  ERROR] " + self.ENDC + message)
+        ColorPrinter.printQueue.put(
+            self.FAIL + "[  ERROR] " + self.ENDC + message)
 
     def CompilePrint(self, percent, build, message):
         """
@@ -86,20 +128,21 @@ class ColorPrinter():
         print_string = self.OKGREEN + \
             "[" + percent_string + "%]" + self.OKBLUE + \
             "[ " + build + " ] " + self.ENDC + message
-        print(print_string)
+        ColorPrinter.printQueue.put(print_string)
 
     def LinkPrint(self, build, message):
         """
         Prints a linked message, including a green link prefix.
         """
-        print(self.OKGREEN + "[ LINK!!]" + self.OKBLUE +
-              "[ " + build + " ] " + self.ENDC + message)
+        ColorPrinter.printQueue.put(self.OKGREEN + "[ LINK!!]" + self.OKBLUE +
+                                    "[ " + build + " ] " + self.ENDC + message)
 
     def TestPassPrint(self, message):
         """
         Prints a test result message.
         """
-        print(self.OKGREEN + "[ PASS!!]" + self.ENDC + message)
+        ColorPrinter.printQueue.put(
+            self.OKGREEN + "[ PASS!!]" + self.ENDC + message)
 
     def TestResultPrint(self, message):
         """
@@ -107,13 +150,15 @@ class ColorPrinter():
         """
         results_lines = message.split(os.linesep)
         for line in results_lines:
-            print(self.OKBLUE + "[RESULTS] " + self.ENDC + line)
+            ColorPrinter.printQueue.put(
+                self.OKBLUE + "[RESULTS] " + self.ENDC + line)
 
     def TestFailPrint(self, message):
         """
         Prints a test result message.
         """
-        print(self.FAIL + "[ FAIL!!]" + self.ENDC + message)
+        ColorPrinter.printQueue.put(
+            self.FAIL + "[ FAIL!!]" + self.ENDC + message)
 
     def ConfigString(self, message):
         """
